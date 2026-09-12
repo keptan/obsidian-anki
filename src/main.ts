@@ -16,6 +16,7 @@ import { pullFromAnki } from "./pull";
 import { ReportModal } from "./report-modal";
 import { approveSync } from "./sync-preview-modal";
 import { snapshot } from "./render";
+import { createState, loadState } from "./state";
 
 interface Data {
   settings: Settings;
@@ -23,12 +24,12 @@ interface Data {
 }
 export default class AnkiForgePlugin extends Plugin {
   settings: Settings = DEFAULT_SETTINGS;
-  private state: PluginState = { version: 1, cards: {} };
+  private state: PluginState = createState();
   private running = new Set<string>();
   async onload() {
     const data = (await this.loadData()) as Partial<Data> | null;
     this.settings = { ...DEFAULT_SETTINGS, ...data?.settings };
-    this.state = data?.state ?? { version: 1, cards: {} };
+    this.state = loadState(data?.state);
     this.addCommand({
       id: "sync-current-note",
       name: "Sync current note to Anki",

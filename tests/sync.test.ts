@@ -79,6 +79,42 @@ describe("sync planning", () => {
 });
 
 describe("fault isolation", () => {
+  it("preserves user-defined fields on Forge note models", async () => {
+    const cards = parseMarkdown("Question::Answer\n^af-safe\n").cards;
+    const removed: string[] = [];
+    const fake = {
+      modelNames: async () => ["Anki Forge Basic"],
+      modelFieldNames: async () => [
+        "Front",
+        "Back",
+        "Extra",
+        "ForgeKey",
+        "Mnemonic",
+      ],
+      modelFieldAdd: async () => null,
+      modelFieldRemove: async (_model: string, field: string) => {
+        removed.push(field);
+        return null;
+      },
+      modelFieldReposition: async () => null,
+      updateModelTemplates: async () => null,
+      updateModelStyling: async () => null,
+      createModel: async () => 1,
+      createDeck: async () => 1,
+      addNote: async () => 42,
+      deleteNotes: async () => null,
+    };
+
+    await new SyncEngine(fake as never).apply(
+      { cards, create: cards, update: [], remove: [], unchanged: 0 },
+      createStateForTest(),
+      "Default",
+      "source",
+    );
+
+    expect(removed).toEqual([]);
+  });
+
   it("continues creating cards after a duplicate is rejected", async () => {
     const cards = parseMarkdown(
       "Duplicate::A\n^af-dup\nValid::B\n^af-ok\n",
@@ -186,3 +222,7 @@ describe("fault isolation", () => {
     expect(state.cards.valid?.fingerprint).toBe(fingerprint(cards[1]!));
   });
 });
+
+function createStateForTest(): PluginState {
+  return { version: 1, cards: {} };
+}

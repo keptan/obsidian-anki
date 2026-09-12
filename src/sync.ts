@@ -237,9 +237,8 @@ export class SyncEngine {
         await this.anki.createModel(definition);
       else {
         const fields = await this.anki.modelFieldNames(definition.modelName);
-        for (const field of fields)
-          if (!definition.inOrderFields.includes(field))
-            await this.anki.modelFieldRemove(definition.modelName, field);
+        // Extra fields may contain user-authored data across the entire model.
+        // Forge owns its required fields, but must not delete fields it did not create.
         for (const field of definition.inOrderFields)
           if (!fields.includes(field))
             await this.anki.modelFieldAdd(definition.modelName, field);

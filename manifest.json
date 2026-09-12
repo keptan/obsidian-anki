@@ -1,7 +1,7 @@
 {
   "id": "anki-forge",
   "name": "Anki Forge",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "minAppVersion": "1.5.0",
   "description": "Reliably sync Markdown flashcards to Anki.",
   "author": "wavey",
