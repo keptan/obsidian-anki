@@ -1,6 +1,6 @@
 {
   "name": "obsidian-anki-forge",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "description": "A robust Markdown-to-Anki bridge for Obsidian",
   "type": "module",

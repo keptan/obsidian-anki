@@ -56,6 +56,56 @@ $$`;
       original,
     );
   });
+  it("does not insert HTML line breaks inside display math", () => {
+    const rendered = markdownToAnki(String.raw`$$
+\begin{aligned}
+x &= 1 \\
+y &= 2
+\end{aligned}
+$$`);
+    const math = rendered.match(/\\\[([\s\S]*?)\\\]/)?.[1];
+    expect(math).toContain("\\begin{aligned}");
+    expect(math).not.toContain("<br");
+  });
+  it("does not confuse user text with its display-math placeholder", () => {
+    const rendered = markdownToAnki(
+      "ANKIFORGEDISPLAYMATH0TOKEN\n\n$$x^2$$",
+    );
+    expect(rendered).toContain("ANKIFORGEDISPLAYMATH0TOKEN");
+    expect(rendered).toContain(String.raw`\[x^2\]`);
+  });
+  it("restores multiline math layout when other Anki text changed", () => {
+    const original = String.raw`Old explanation
+$$
+\begin{aligned}
+x &= 1 \\
+y &= 2
+\end{aligned}
+$$`;
+    const remote = String.raw`<div>New explanation</div><div>\[\begin{aligned}x &= 1 \\ y &= 2\end{aligned}\]</div>`;
+    const pulled = preserveEquivalentMarkdown(remote, original, (html) =>
+      html.replace(/<br\s*\/?>/gi, "\n").replace(/<\/?div>/gi, "\n").trim(),
+    );
+    expect(pulled).toContain(String.raw`$$
+\begin{aligned}
+x &= 1 \\
+y &= 2
+\end{aligned}
+$$`);
+  });
+  it("does not discard meaningful whitespace edits in math text", () => {
+    const original = String.raw`$$
+\text{prey population}
+$$`;
+    const pulled = preserveEquivalentMarkdown(
+      String.raw`<div>\[\text{preypopulation}\]</div>`,
+      original,
+      (html) => html.replace(/<\/?div>/gi, "").trim(),
+    );
+    expect(pulled).toBe(String.raw`$$
+\text{preypopulation}
+$$`);
+  });
   it("converts math created in Anki back to Obsidian math syntax", () => {
     const htmlToMarkdown = (html: string) =>
       html.replace(/<\/?(?:p|div)>/gi, "").trim();
@@ -250,6 +300,41 @@ Next::Card
       "math",
       "inline",
     ]);
+  });
+  it("keeps multiline display math in a spaced inline card answer", () => {
+    const source = String.raw`Find the equilibria :: $$
+\begin{cases}
+ax-bxy=0 \\
+-cy+dxy=0
+\end{cases}
+$$
+Next::Card
+`;
+    const cards = parseMarkdown(source).cards;
+    expect(cards).toHaveLength(2);
+    expect(cards[0]?.front).toBe("Find the equilibria");
+    expect(cards[0]?.back).toBe(String.raw`$$
+\begin{cases}
+ax-bxy=0 \\
+-cy+dxy=0
+\end{cases}
+$$`);
+
+    let index = 0;
+    const marked = insertMarkers(
+      source,
+      cards,
+      () => ["math", "next"][index++]!,
+    ).source;
+    expect(marked).toContain("\\end{cases}\n$$\n^af-math\nNext::Card");
+    expect(marked).not.toContain("Find the equilibria :: $$\n^af-math");
+
+    const reparsed = parseMarkdown(marked).cards;
+    expect(reparsed.map((card) => card.key)).toEqual(["math", "next"]);
+    const fields = renderCard(reparsed[0]!, "source");
+    expect("Back" in fields && fields.Back).toContain(String.raw`\[`);
+    expect("Back" in fields && fields.Back).toContain(String.raw`\begin{cases}`);
+    expect("Back" in fields && fields.Back).toContain(String.raw`\]`);
   });
   it("preserves tagged multiline syntax when applying an Anki edit", () => {
     const source = "Why? #card\nOld answer\n^af-key\n";

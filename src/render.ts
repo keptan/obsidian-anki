@@ -29,6 +29,9 @@ export function snapshot(card: ParsedCard): CardSnapshot {
   };
 }
 export function markdownToAnki(value: string): string {
+  const displayMath: string[] = [];
+  let displayMathToken = "ANKIFORGEDISPLAYMATH";
+  while (value.includes(displayMathToken)) displayMathToken += "X";
   const expanded = value
     .replace(
       /!\[\[([^\]|]+\.(?:mp3|wav|m4a|ogg|flac))(?:\|[^\]]+)?\]\]/gi,
@@ -45,9 +48,22 @@ export function markdownToAnki(value: string): string {
     )
     .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "[$2]($1)")
     .replace(/\[\[([^\]]+)\]\]/g, "[$1]($1)")
-    .replace(/\$\$([\s\S]+?)\$\$/g, "\\\\[$1\\\\]")
+    // Keep display math out of markdown-it while it applies `breaks: true`.
+    // Otherwise every source newline becomes a <br> inside Anki's MathJax
+    // delimiter and Anki later serializes the equation as a single line.
+    .replace(/\$\$([\s\S]+?)\$\$/g, (_match, body: string) => {
+      const token = `${displayMathToken}${displayMath.length}TOKEN`;
+      displayMath.push(body);
+      return `\n\n${token}\n\n`;
+    })
     .replace(/(^|[^$])\$([^\n$]+?)\$/g, "$1\\\\($2\\\\)");
-  return md.render(expanded);
+  return md
+    .render(expanded)
+    .replace(
+      new RegExp(`<p>${displayMathToken}(\\d+)TOKEN<\\/p>\\n?`, "g"),
+      (_match, index: string) =>
+        `<div>\\[${escapeHtml(displayMath[Number(index)] ?? "")}\\]</div>\n`,
+    );
 }
 export function preserveEquivalentMarkdown(
   remoteHtml: string,
@@ -74,12 +90,33 @@ export function preserveEquivalentMarkdown(
       .trim();
   if (canonical(remoteMarkdown) === canonical(renderedMarkdown))
     return originalMarkdown;
-  return remoteMarkdown
+  const converted = remoteMarkdown
     .replace(
       /\\\[([\s\S]*?)\\\]/g,
       (_match, body: string) => `$$\n${body.trim()}\n$$`,
     )
     .replace(/\\\(([^\n]*?)\\\)/g, (_match, body: string) => `$${body}$`);
+  const originalBlocks = [
+    ...originalMarkdown.matchAll(/\$\$([\s\S]*?)\$\$/g),
+  ];
+  const used = new Set<number>();
+  const whitespaceSensitiveArguments = (body: string) =>
+    [...body.matchAll(/\\(?:text|operatorname|mbox|textrm|textsf|texttt)\s*\{([^{}]*)\}/g)].map(
+      (match) => (match[1] ?? "").replace(/\s+/g, " ").trim(),
+    );
+  const equivalentMath = (left: string, right: string) =>
+    left.replace(/\s+/g, "") === right.replace(/\s+/g, "") &&
+    JSON.stringify(whitespaceSensitiveArguments(left)) ===
+      JSON.stringify(whitespaceSensitiveArguments(right));
+  return converted.replace(/\$\$([\s\S]*?)\$\$/g, (block, body: string) => {
+    const match = originalBlocks.findIndex(
+      (item, index) =>
+        !used.has(index) && equivalentMath(item[1] ?? "", body),
+    );
+    if (match < 0) return block;
+    used.add(match);
+    return originalBlocks[match]![0];
+  });
 }
 export function renderCard(card: ParsedCard, sourceLink: string) {
   const context = card.context.join(" › ");

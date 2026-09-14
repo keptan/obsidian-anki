@@ -380,8 +380,35 @@ export function parseMarkdown(
     } else {
       const parsedInline = inline(tagData.text, options);
       const parsedCloze = parsedInline ? undefined : cloze(tagData.text);
-      if (parsedInline) candidate = parsedInline;
-      else if (parsedCloze)
+      if (parsedInline) {
+        candidate = parsedInline;
+        // An inline answer may begin (or contain) a display-math block whose
+        // closing delimiter is on a later line. Keep that entire block in the
+        // card so its Forge marker is placed after the closing `$$`, not
+        // inside the equation.
+        let answerDisplayMath =
+          [...parsedInline.back.matchAll(/(?<!\\)\$\$/g)].length % 2 === 1;
+        if (answerDisplayMath) {
+          const answer = [parsedInline.back];
+          const answerMathStart = i + 1;
+          for (let j = i + 1; j < lines.length; j++) {
+            const nextLine = (lines[j] ?? "").replace(/\r?\n$/, "");
+            answer.push(nextLine);
+            rangeEnd += (lines[j] ?? "").length;
+            markerOffset = rangeEnd;
+            consumedUntil = j;
+            const delimiters = [...nextLine.matchAll(/(?<!\\)\$\$/g)].length;
+            if (delimiters % 2 === 1) answerDisplayMath = false;
+            if (!answerDisplayMath) break;
+          }
+          candidate.back = answer.join("\n").trim();
+          if (answerDisplayMath)
+            diagnostics.push({
+              line: answerMathStart,
+              message: "Unterminated display math in inline card answer",
+            });
+        }
+      } else if (parsedCloze)
         candidate = { kind: "cloze", front: parsedCloze, back: "" };
       if (parsedCloze && !parsedInline) sourceStyle = "cloze";
     }
